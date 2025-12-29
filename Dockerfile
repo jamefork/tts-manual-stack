@@ -6,7 +6,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy file Code và file Logo vào (Thêm dòng này)
+# Copy file Code và file Logo vào
 COPY app.py .
 COPY logo.png . 
 
