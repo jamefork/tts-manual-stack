@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  tts-app:
+    container_name: tts-text-server
+    # QUAN TRỌNG: Thay dấu chấm "." bằng đường dẫn tuyệt đối tới thư mục chứa file trên Armbian
+    build: /root/tts-text
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount code vào để nếu sửa app.py thì chỉ cần F5 trình duyệt, không cần build lại
+      - /root/tts-text/app.py:/app/app.py
+    restart: unless-stopped
+    image: tts-text-image:latest
