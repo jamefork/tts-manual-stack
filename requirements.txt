@@ -3,3 +3,6 @@ uvicorn
 python-multipart
 edge-tts
 aiofiles
+gspread
+oauth2client
+itsdangerous
