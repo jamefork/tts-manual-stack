@@ -50,13 +50,14 @@ html_content = f"""
         h1 {{ text-align: center; color: #2c3e50; margin-bottom: 20px; font-size: 24px; }}
         textarea {{ 
             width: 100%; 
-            height: 150px; 
+            height: 400px;  /* Đã sửa thành 400px cho rộng rãi */
             margin-bottom: 15px; 
             padding: 12px; 
             border: 1px solid #ddd; 
             border-radius: 8px; 
             font-size: 16px; 
-            box-sizing: border-box; /* Đảm bảo padding không làm vỡ khung */
+            box-sizing: border-box;
+            font-family: inherit; /* Giữ font chữ đẹp */
         }}
         select {{
             width: 100%;
@@ -126,3 +127,4 @@ async def text_to_speech(text: str = Form(...), voice: str = Form(...)):
     await communicate.save(temp_path)
     
     return FileResponse(temp_path, media_type="audio/mpeg", filename="tts_output.mp3")
+
