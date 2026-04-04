@@ -6,3 +6,4 @@ aiofiles
 gspread
 oauth2client
 itsdangerous
+jinja2
