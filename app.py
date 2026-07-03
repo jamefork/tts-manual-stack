@@ -389,11 +389,28 @@ class TTSRequest(BaseModel):
 # Hàm tạo file nhanh (không stream)
 async def create_audio_direct(text: str, voice: str, output_filename: str):
     file_path = os.path.join(TEMP_DIR, output_filename)
+    
+    # Xóa file cũ nếu bị trùng tên
     if os.path.exists(file_path):
         os.remove(file_path)
     
-    communicate = edge_tts.Communicate(text, voice)
-    await communicate.save(file_path)
+    # 1. Cắt bài viết dài thành từng đoạn nhỏ dựa trên dấu xuống dòng
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    
+    if not lines:
+        raise Exception("Văn bản rỗng sau khi xử lý")
+
+    # 2. Xử lý từng đoạn và ghi nối tiếp (append) vào một file mp3 duy nhất
+    for i, line in enumerate(lines):
+        try:
+            communicate = edge_tts.Communicate(line, voice)
+            with open(file_path, "ab") as f: # Chế độ "ab" là ghi nối tiếp
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        f.write(chunk["data"])
+        except Exception as e:
+            print(f"Lỗi khi đọc đoạn {i}: {e}")
+            
     return file_path
 
 # Endpoint để Ghost Blog gọi đến
