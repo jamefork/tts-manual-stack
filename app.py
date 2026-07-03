@@ -2,6 +2,9 @@ from fastapi import FastAPI, Form, Request, Depends
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi import Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import edge_tts
 import tempfile
 import os
@@ -13,6 +16,21 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 app = FastAPI()
+
+# Cấu hình CORS cho phép Ghost Blog gọi API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Thay "*" bằng tên miền Ghost blog của bạn (VD: "https://myblog.com") để bảo mật hơn
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Lấy API KEY từ biến môi trường. Nếu không cấu hình, ứng dụng sẽ không chạy để đảm bảo an toàn.
+API_KEY = os.environ.get('TTS_API_KEY')
+
+if not API_KEY:
+    raise RuntimeError("Lỗi bảo mật: Chưa cấu hình biến môi trường TTS_API_KEY trên server!")
 
 # --- CẤU HÌNH BẢO MẬT & GOOGLE SHEET ---
 # Secret Key cho Session (Bắt buộc)
@@ -360,3 +378,54 @@ async def download_file(request: Request, filename: str):
     if os.path.exists(file_path):
         return FileResponse(file_path, media_type="audio/mpeg", filename="tts_audio.mp3")
     return HTMLResponse("File not found", status_code=404)
+
+# --- API CHO GHOST BLOG ---
+
+# Schema nhận dữ liệu JSON
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "vi-VN-HoaiMyNeural" # Giọng mặc định
+
+# Hàm tạo file nhanh (không stream)
+async def create_audio_direct(text: str, voice: str, output_filename: str):
+    file_path = os.path.join(TEMP_DIR, output_filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    
+    communicate = edge_tts.Communicate(text, voice)
+    await communicate.save(file_path)
+    return file_path
+
+# Endpoint để Ghost Blog gọi đến
+@app.post("/api/tts")
+async def api_generate_tts(req: TTSRequest, x_api_key: str = Header(None)):
+    # 1. Kiểm tra API Key
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Sai API Key")
+    
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="Văn bản trống")
+
+    # 2. Tạo tên file ngẫu nhiên và sinh audio
+    filename = f"{uuid.uuid4()}.mp3"
+    try:
+        await create_audio_direct(req.text, req.voice, filename)
+        
+        # 3. Trả về đường link trực tiếp đến file Audio
+        # Thay YOUR_SERVER_DOMAIN bằng domain hoặc IP server FastAPI của bạn
+        # VD: "https://api.domain.com/api/audio/" + filename
+        return {
+            "status": "success", 
+            "audio_url": f"/api/audio/{filename}" 
+        }
+    except Exception as e:
+        print(f"API Error: {e}")
+        raise HTTPException(status_code=500, detail="Lỗi server khi tạo giọng đọc")
+
+# Endpoint cho phép thẻ <audio> trên Ghost đọc file (Không cần session)
+@app.get("/api/audio/{filename}")
+async def get_api_audio(filename: str):
+    file_path = os.path.join(TEMP_DIR, filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
+    return JSONResponse(status_code=404, content={"message": "File not found"})
