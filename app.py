@@ -20,7 +20,7 @@ app = FastAPI()
 # Cấu hình CORS cho phép Ghost Blog gọi API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Thay "*" bằng tên miền Ghost blog của bạn (VD: "https://myblog.com") để bảo mật hơn
+    allow_origins=["https://home.pmtl.site"], # Thay "*" bằng tên miền Ghost blog của bạn (VD: "https://myblog.com") để bảo mật hơn
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
