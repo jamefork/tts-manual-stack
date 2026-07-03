@@ -446,3 +446,52 @@ async def get_api_audio(filename: str):
     if os.path.exists(file_path):
         return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
     return JSONResponse(status_code=404, content={"message": "File not found"})
+
+# Logic sinh âm thanh có thời gian nghỉ và báo cáo %
+async def tts_generator_api(text, voice, output_filename):
+    # Lọc bỏ các dòng rác hoặc quá ngắn (chỉ có 1 dấu chấm/dấu cách)
+    lines = [line.strip() for line in text.split('\n') if len(line.strip()) > 2]
+    total_lines = len(lines)
+    
+    if total_lines == 0:
+        yield json.dumps({"status": "done", "filename": ""}) + "\n"
+        return
+
+    file_path = os.path.join(TEMP_DIR, output_filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
+    for i, line in enumerate(lines):
+        try:
+            # QUAN TRỌNG: Nghỉ 1 giây để Microsoft không chặn (Fix lỗi No audio was received)
+            if i > 0:
+                await asyncio.sleep(1)
+                
+            communicate = edge_tts.Communicate(line, voice)
+            with open(file_path, "ab") as f:
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        f.write(chunk["data"])
+            
+            # Trả về % tiến trình cho Web
+            percent = ((i + 1) / total_lines) * 100
+            yield json.dumps({"status": "progress", "percent": percent}) + "\n"
+        except Exception as e:
+            print(f"Lỗi dòng {i}: {e}")
+
+    # Báo cáo hoàn thành và trả tên file
+    yield json.dumps({"status": "done", "filename": output_filename}) + "\n"
+
+
+# Endpoint Streaming (Dùng API KEY bảo mật)
+@app.post("/api/tts-stream")
+async def api_tts_stream_endpoint(req: TTSRequest, x_api_key: str = Header(None)):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Sai API Key")
+    
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="Văn bản trống")
+
+    filename = f"{uuid.uuid4()}.mp3"
+    # Dùng StreamingResponse để giữ kết nối không bị Timeout
+    return StreamingResponse(tts_generator_api(req.text, req.voice, filename), media_type="application/x-ndjson")
