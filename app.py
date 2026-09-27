@@ -9,6 +9,7 @@ import json
 import asyncio
 import base64
 import uuid
+from datetime import date
 
 app = FastAPI()
 
@@ -257,19 +258,32 @@ async def tts_generator(text, voice, output_filename):
 
 @app.post("/tts-stream")
 async def tts_stream_endpoint(request: Request, text: str = Form(...), voice: str = Form(...)):
-    # 1. Kiểm tra giới hạn 1000 ký tự
+    # 1. Kiểm tra giới hạn ký tự
     if len(text) > MAX_CHARS:
         raise HTTPException(status_code=400, detail=f"Văn bản quá dài! Vui lòng nhập tối đa {MAX_CHARS} ký tự.")
 
-    # 2. Kiểm tra giới hạn số lần sử dụng qua IP
+    # 2. Kiểm tra giới hạn số lần sử dụng qua IP THEO NGÀY
     client_ip = request.client.host
-    usage = user_usage_counts.get(client_ip, 0)
+    current_date = str(date.today()) # Lấy ngày hiện tại (VD: 2023-10-24)
     
-    if usage >= MAX_USAGE_PER_IP:
-        raise HTTPException(status_code=429, detail="Bạn đã hết 3 lượt tạo giọng đọc miễn phí.")
+    # Lấy dữ liệu của IP này (nếu chưa có thì trả về None)
+    user_record = user_usage_counts.get(client_ip)
 
-    # 3. Ghi nhận lượt sử dụng mới
-    user_usage_counts[client_ip] = usage + 1
+    # Nếu chưa từng sử dụng HOẶC ngày sử dụng cuối cùng khác ngày hôm nay -> Reset về 0
+    if not user_record or user_record["date"] != current_date:
+        usage = 0
+    else:
+        usage = user_record["count"] # Nếu cùng ngày thì lấy số lượt đã dùng
+    
+    # Chặn nếu đã dùng 3 lần trong ngày hôm nay
+    if usage >= MAX_USAGE_PER_IP:
+        raise HTTPException(status_code=429, detail="Bạn đã hết 3 lượt miễn phí hôm nay. Vui lòng quay lại vào ngày mai!")
+
+    # 3. Ghi nhận lượt sử dụng mới kèm theo ngày hiện tại
+    user_usage_counts[client_ip] = {
+        "date": current_date,
+        "count": usage + 1
+    }
 
     filename = f"{uuid.uuid4()}.mp3"
     return StreamingResponse(tts_generator(text, voice, filename), media_type="application/x-ndjson")
