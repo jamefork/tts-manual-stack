@@ -258,13 +258,17 @@ async def tts_generator(text, voice, output_filename):
 
 @app.post("/tts-stream")
 async def tts_stream_endpoint(request: Request, text: str = Form(...), voice: str = Form(...)):
+    # --- THÊM DÒNG NÀY ĐỂ FIX LỖI LỆCH KÝ TỰ ---
+    # Đồng bộ số lượng ký tự đếm được giống với JavaScript trên trình duyệt
+    text = text.replace('\r\n', '\n')
+    
     # 1. Kiểm tra giới hạn ký tự
     if len(text) > MAX_CHARS:
         raise HTTPException(status_code=400, detail=f"Văn bản quá dài! Vui lòng nhập tối đa {MAX_CHARS} ký tự.")
 
     # 2. Kiểm tra giới hạn số lần sử dụng qua IP THEO NGÀY
     client_ip = request.client.host
-    current_date = str(date.today()) # Lấy ngày hiện tại (VD: 2023-10-24)
+    current_date = str(date.today())
     
     # Lấy dữ liệu của IP này (nếu chưa có thì trả về None)
     user_record = user_usage_counts.get(client_ip)
